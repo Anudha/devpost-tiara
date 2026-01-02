@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dark Synth - Flute & Piano</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --panel-bg: #1e1e1e;
+            --teal-accent: #008080;
+            --teal-glow: #00f2f2;
+            --gray-text: #b0b0b0;
+            --border-color: #333;
+        }
+
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: var(--bg-color); 
+            color: white; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 40px; 
+        }
+
+        h1 { color: var(--teal-glow); text-transform: uppercase; letter-spacing: 2px; }
+
+        .container {
+            background: var(--panel-bg);
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            max-width: 600px;
+            width: 100%;
+        }
+
+        .controls { margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; }
+
+        select, button.action-btn {
+            background: #2a2a2a;
+            color: var(--teal-glow);
+            border: 1px solid var(--teal-accent);
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .keyboard { display: flex; justify-content: center; gap: 8px; margin: 20px 0; }
+
+        .key-btn {
+            padding: 25px 18px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: #252525;
+            color: var(--gray-text);
+            transition: all 0.1s;
+            min-width: 55px;
+        }
+
+        .key-btn:active { 
+            background: var(--teal-accent); 
+            color: white; 
+            box-shadow: 0 0 15px var(--teal-glow);
+            transform: translateY(2px);
+        }
+
+        #note-display {
+            background: #0a0a0a;
+            border: 1px solid var(--border-color);
+            padding: 15px;
+            height: 120px;
+            overflow-y: auto;
+            border-radius: 4px;
+            font-family: 'Courier New', Courier, monospace;
+            color: var(--teal-glow);
+            line-height: 1.6;
+            text-align: left;
+            margin-top: 20px;
+            white-space: pre-wrap;
+        }
+
+        .label { color: var(--gray-text); font-size: 12px; text-transform: uppercase; margin-bottom: 5px; display: block; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Oscillator Synth</h1>
+        
+        <div class="controls">
+            <div>
+                <span class="label">Waveform</span>
+                <select id="waveType">
+                    <option value="triangle">Flute (Triangle)</option>
+                    <option value="sine">Pure (Sine)</option>
+                    <option value="square">Retro (Square)</option>
+                    <option value="sawtooth">Brass (Sawtooth)</option>
+                </select>
+            </div>
+            <button class="action-btn" onclick="downloadCSV()">Download CSV</button>
+        </div>
+
+        <div class="keyboard" id="keyboard"></div>
+
+        <span class="label">Note Sequence (16 per line)</span>
+        <div id="note-display"></div>
+    </div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const noteHistory = [];
+        
+        const notes = [
+            { name: 'C', freq: 261.63 }, { name: 'D', freq: 293.66 },
+            { name: 'E', freq: 329.63 }, { name: 'F', freq: 349.23 },
+            { name: 'G', freq: 392.00 }, { name: 'A', freq: 440.00 },
+            { name: 'B', freq: 493.88 }
+        ];
+
+        const keyboard = document.getElementById('keyboard');
+        const display = document.getElementById('note-display');
+        const waveSelect = document.getElementById('waveType');
+
+        // Render Keys
+        notes.forEach(note => {
+            const btn = document.createElement('button');
+            btn.className = 'key-btn';
+            btn.innerText = note.name;
+            btn.onmousedown = () => playNote(note);
+            keyboard.appendChild(btn);
+        });
+
+        function playNote(noteObj) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = waveSelect.value;
+            oscillator.frequency.setValueAtTime(noteObj.freq, audioCtx.currentTime);
+
+            const now = audioCtx.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.4, now + 0.1); 
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start();
+            oscillator.stop(now + 1.2);
+
+            updateHistory(noteObj.name);
+        }
+
+        function updateHistory(noteName) {
+            noteHistory.push(noteName);
+            
+            // Format display: 16 notes per line
+            let displayText = "";
+            for (let i = 0; i < noteHistory.length; i++) {
+                displayText += noteHistory[i] + " ";
+                if ((i + 1) % 16 === 0) {
+                    displayText += "\n";
+                }
+            }
+            display.innerText = displayText;
+            display.scrollTop = display.scrollHeight; // Auto-scroll to bottom
+        }
+
+        function downloadCSV() {
+            if (noteHistory.length === 0) return alert("No notes played yet!");
+            
+            const csvContent = "data:text/csv;charset=utf-8,Index,Note\n" 
+                + noteHistory.map((note, index) => `${index + 1},${note}`).join("\n");
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "synth_sequence.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
