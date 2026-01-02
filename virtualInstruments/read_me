@@ -1,0 +1,13 @@
+Prompts
+
+
+a #Playing Notes, detailed instruction
+write an html page with javascript that creates buttons and sounds for a waveform representative of flute sound. there should be seven buttons for playing each note. can do a square wave or triangle wave or do another instrument like piano.
+
+
+b #Displaying and Saving Notes, Adding Functionality
+in the above html page, add these things: a window where the notes one plays are concatenated and displayed with 16 notes per line, then move to the next line, the ability to download a csv file for the notes that are played, use a teal and gray highlights theme, dark theme
+
+
+c #Minimal direction and more abstract instruction
+create the ability to play up to 3 notes at a time, and expand the keys to span 3 octaves
