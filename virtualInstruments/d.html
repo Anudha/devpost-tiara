@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide Synth - 3 Octaves</title>
+    <style>
+        :root {
+            --bg-color: #0a0a0a;
+            --panel-bg: #141414;
+            --teal-accent: #008080;
+            --teal-glow: #00f2f2;
+            --gray-text: #666;
+            --border-color: #222;
+        }
+
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: var(--bg-color); 
+            color: white; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            background: var(--panel-bg);
+            padding: 20px;
+            border-radius: 8px;
+            width: 98vw;
+            box-sizing: border-box;
+        }
+
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        
+        /* The Long Vertical Keyboard Scroll */
+        .keyboard-container {
+            width: 100%;
+            overflow-x: auto;
+            background: #000;
+            padding: 10px 0;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            cursor: crosshair;
+        }
+
+        .keyboard { 
+            display: flex; 
+            width: max-content; /* Allows it to stretch based on key count */
+            height: 300px; /* Vertical length */
+            gap: 2px;
+            padding: 0 10px;
+        }
+
+        .key-btn {
+            width: 35px;
+            height: 100%;
+            background: #1a1a1a;
+            border: 1px solid var(--border-color);
+            color: var(--gray-text);
+            font-size: 10px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding-bottom: 10px;
+            cursor: pointer;
+            transition: background 0.1s;
+            user-select: none;
+            border-radius: 0 0 4px 4px;
+        }
+
+        /* Highlight teal when active or hovered while clicking */
+        .key-btn:hover {
+            background: #222;
+        }
+
+        .key-btn.active {
+            background: var(--teal-accent) !important;
+            color: white;
+            box-shadow: 0 0 15px var(--teal-glow);
+        }
+
+        #note-display {
+            background: #000;
+            border: 1px solid var(--border-color);
+            padding: 15px;
+            height: 80px;
+            overflow-y: auto;
+            border-radius: 4px;
+            font-family: monospace;
+            color: var(--teal-glow);
+            font-size: 12px;
+        }
+
+        .controls { display: flex; gap: 10px; }
+        select, .action-btn {
+            background: #1a1a1a;
+            color: var(--teal-glow);
+            border: 1px solid var(--teal-accent);
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1 style="font-size: 1rem; color: var(--teal-accent);">SLIDE SYNTHESIZER</h1>
+            <div class="controls">
+                <select id="waveType">
+                    <option value="triangle">Flute</option>
+                    <option value="sine">Sine</option>
+                    <option value="square">Square</option>
+                    <option value="sawtooth">Brass</option>
+                </select>
+                <button class="action-btn" onclick="downloadCSV()">Export CSV</button>
+            </div>
+        </div>
+
+        <div class="keyboard-container">
+            <div class="keyboard" id="keyboard"></div>
+        </div>
+
+        <div id="note-display"></div>
+    </div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.3;
+        masterGain.connect(audioCtx.destination);
+
+        const noteHistory = [];
+        const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        
+        const keyboard = document.getElementById('keyboard');
+        const display = document.getElementById('note-display');
+        const waveSelect = document.getElementById('waveType');
+
+        // Create 36 Keys (3 Octaves)
+        for (let octave = 3; octave <= 5; octave++) {
+            noteNames.forEach((name, index) => {
+                const midiNote = (octave + 1) * 12 + index;
+                const freq = 440 * Math.pow(2, (midiNote - 69) / 12);
+                
+                const btn = document.createElement('div');
+                btn.className = 'key-btn';
+                btn.innerText = `${name}${octave}`;
+                
+                // Interaction Logic: Trigger on Mouse Enter IF mouse is down
+                btn.onmouseenter = (e) => {
+                    //if (e.buttons === 1) { 
+                        playNote(freq, btn, `${name}${octave}`);
+                    //}
+                };
+                
+                // Also trigger on initial click
+                btn.onmousedown = () => {
+                    playNote(freq, btn, `${name}${octave}`);
+                };
+
+                keyboard.appendChild(btn);
+            });
+        }
+
+        function playNote(freq, element, name) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            // Visual feedback
+            element.classList.add('active');
+            setTimeout(() => element.classList.remove('active'), 200);
+
+            const osc = audioCtx.createOscillator();
+            const voiceGain = audioCtx.createGain();
+
+            osc.type = waveSelect.value;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+            const now = audioCtx.currentTime;
+            voiceGain.gain.setValueAtTime(0, now);
+            voiceGain.gain.linearRampToValueAtTime(0.4, now + 0.05);
+            voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+
+            osc.connect(voiceGain);
+            voiceGain.connect(masterGain);
+
+            osc.start();
+            osc.stop(now + 0.8);
+
+            updateHistory(name);
+        }
+
+        function updateHistory(name) {
+            noteHistory.push(name);
+            let text = "";
+            for (let i = 0; i < noteHistory.length; i++) {
+                text += noteHistory[i].padEnd(5, ' ');
+                if ((i + 1) % 16 === 0) text += "\n";
+            }
+            display.innerText = text;
+            display.scrollTop = display.scrollHeight;
+        }
+
+        function downloadCSV() {
+            if (noteHistory.length === 0) return;
+            const content = "Index,Note\n" + noteHistory.map((n, i) => `${i+1},${n}`).join("\n");
+            const blob = new Blob([content], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'melody.csv';
+            a.click();
+        }
+    </script>
+</body>
+</html>
