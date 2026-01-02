@@ -1,3 +1,4 @@
+#pi
 #can you create an html and java script page with audio player that plays flute keys (triangle wave). instead of a horizontal array of buttons to play each note, 
 #i want tiny keys laid out in a circular disk. the farthest from the center have the higest pitch like the right end of a piano. the middle has the lowest frequencies. 
 #apply a teal color gradient to the keys. when mouse enters an area, it should play that sound. create a toggle for different instruments (like drum beat, guitar)
