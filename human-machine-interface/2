@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Hand Piano (MediaPipe) – Poly + Sustain</title>
+  <style>
+    :root { --bg:#061218; --fg:#d7f6ff; --muted:#86c7d6; }
+    html,body{height:100%; margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;}
+    body{background: radial-gradient(900px 600px at 30% 15%, #0b2b35 0%, var(--bg) 55%, #04090c 100%); color:var(--fg); display:flex; justify-content:center; align-items:center;}
+    .wrap{width:min(1100px, 96vw); display:grid; grid-template-columns: 1fr 330px; gap:14px;}
+    .card{border:1px solid rgba(140,230,255,.14); border-radius:16px; overflow:hidden; background: rgba(7,18,24,.7); box-shadow: 0 18px 50px rgba(0,0,0,.4);}
+    .stage{position:relative; aspect-ratio: 16/9; min-height: 520px;}
+    video,canvas{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
+    .hud{position:absolute; left:12px; bottom:12px; padding:10px 12px; border-radius:12px;
+         background: rgba(0,0,0,.22); border:1px solid rgba(140,230,255,.12); backdrop-filter: blur(8px);
+         font-size:13px; color: rgba(215,246,255,.85); max-width: 70%;}
+    .controls{padding:14px; display:flex; flex-direction:column; gap:12px;}
+    h2{margin:4px 0 0; font-size:15px;}
+    .pill{padding:12px; border-radius:14px; background: rgba(0,0,0,.18); border:1px solid rgba(140,230,255,.12); display:flex; flex-direction:column; gap:8px;}
+    label{font-size:13px; color: rgba(215,246,255,.8);}
+    input[type="range"], select { width: 100%; }
+    select{padding:10px 12px; border-radius:12px; border:1px solid rgba(140,230,255,.16); background: rgba(0,0,0,.18); color: var(--fg); outline:none;}
+    .row{display:flex; justify-content:space-between; align-items:center; gap:10px;}
+    .small{font-size:12px; color: rgba(215,246,255,.65); line-height:1.35;}
+    .btn{padding:10px 12px; border-radius:12px; cursor:pointer; border:1px solid rgba(140,230,255,.2);
+         background: linear-gradient(180deg, rgba(0,190,190,.18), rgba(0,120,140,.12)); color: var(--fg);}
+    .btn:active{transform: translateY(1px);}
+    .toggle{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+    .switch{width:44px; height:26px; border-radius:999px; background: rgba(255,255,255,.12); border:1px solid rgba(140,230,255,.18); position:relative; cursor:pointer;}
+    .knob{position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:999px; background: rgba(215,246,255,.85); transition: transform 120ms ease;}
+    .switch.on{background: rgba(0,190,190,.18);}
+    .switch.on .knob{transform: translateX(18px);}
+    .status{padding:10px 12px; border-radius:12px; background: rgba(0,0,0,.14); border:1px solid rgba(140,230,255,.1); font-size:12px; color: rgba(215,246,255,.75);}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card stage" id="stage">
+      <video id="video" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div class="hud" id="hud">
+        Pinch (thumb+index) to press a key. Move index fingertip left/right to choose note.
+      </div>
+    </div>
+
+    <div class="card controls">
+      <h2>Hand Piano</h2>
+
+      <div class="pill">
+        <label>Instrument</label>
+        <select id="instrument">
+          <option value="piano" selected>Piano-ish (triangle+sine)</option>
+          <option value="organ">Organ (sine)</option>
+          <option value="synth">Synth (saw)</option>
+        </select>
+        <div class="small">Polyphonic chords supported (use multiple fingers/pinches or sustain).</div>
+      </div>
+
+      <div class="pill">
+        <div class="toggle">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:rgba(215,246,255,.9)">Sustain pedal</div>
+            <div class="small">Notes keep ringing after you unpinch.</div>
+          </div>
+          <div class="switch" id="sustainSwitch" role="switch" aria-checked="false" tabindex="0">
+            <div class="knob"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="pill">
+        <div class="row"><label for="volume">Volume</label><span class="small" id="volLabel">70%</span></div>
+        <input id="volume" type="range" min="0" max="1" step="0.01" value="0.7"/>
+        <div class="row"><label for="release">Release</label><span class="small" id="relLabel">350 ms</span></div>
+        <input id="release" type="range" min="0.05" max="2.0" step="0.01" value="0.35"/>
+        <div class="row"><label for="pinch">Pinch threshold</label><span class="small" id="pinchLabel">0.06</span></div>
+        <input id="pinch" type="range" min="0.02" max="0.12" step="0.001" value="0.06"/>
+      </div>
+
+      <button class="btn" id="panic">Panic (stop all)</button>
+      <div class="status" id="status">Status: <b>idle</b> (click video once if audio is blocked)</div>
+
+      <div class="small">
+        Uses MediaPipe Hand Landmarker (Tasks Vision) in-browser. :contentReference[oaicite:2]{index=2}
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  // MediaPipe Tasks Vision (HandLandmarker)
+  // Docs: https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker/web_js :contentReference[oaicite:3]{index=3}
+  import { FilesetResolver, HandLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+  // ---------- DOM ----------
+  const video = document.getElementById("video");
+  const canvas = document.getElementById("overlay");
+  const ctx = canvas.getContext("2d");
+  const stage = document.getElementById("stage");
+  const hud = document.getElementById("hud");
+
+  const instrumentEl = document.getElementById("instrument");
+  const sustainSwitch = document.getElementById("sustainSwitch");
+  const volumeEl = document.getElementById("volume");
+  const releaseEl = document.getElementById("release");
+  const pinchEl = document.getElementById("pinch");
+  const panicBtn = document.getElementById("panic");
+  const statusEl = document.getElementById("status");
+  const volLabel = document.getElementById("volLabel");
+  const relLabel = document.getElementById("relLabel");
+  const pinchLabel = document.getElementById("pinchLabel");
+
+  // ---------- Audio (polyphonic + sustain) ----------
+  let audioCtx = null;
+  let master = null;
+
+  // Active notes:
+  // heldNotes: notes currently "pressed" (pinched)
+  // sustainedNotes: notes released while sustain is ON
+  const heldNotes = new Map();      // note -> Voice
+  const sustainedNotes = new Map(); // note -> Voice
+  let sustainOn = false;
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      master = audioCtx.createGain();
+      master.gain.value = parseFloat(volumeEl.value);
+      master.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    statusEl.innerHTML = "Status: <b>running</b>";
+  }
+
+  function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+
+  function makeVoice(freq) {
+    const t0 = audioCtx.currentTime;
+    const release = parseFloat(releaseEl.value);
+
+    const vca = audioCtx.createGain();
+    vca.gain.setValueAtTime(0.0001, t0);
+    vca.gain.linearRampToValueAtTime(0.9, t0 + 0.01);
+    vca.gain.exponentialRampToValueAtTime(0.6, t0 + 0.08);
+
+    const inst = instrumentEl.value;
+
+    const osc1 = audioCtx.createOscillator();
+    const osc2 = audioCtx.createOscillator();
+
+    if (inst === "piano") { osc1.type = "triangle"; osc2.type = "sine"; }
+    if (inst === "organ") { osc1.type = "sine";    osc2.type = "sine"; }
+    if (inst === "synth") { osc1.type = "sawtooth"; osc2.type = "triangle"; }
+
+    osc1.frequency.setValueAtTime(freq, t0);
+    osc2.frequency.setValueAtTime(freq * 2, t0); // light harmonic
+
+    const mix2 = audioCtx.createGain();
+    mix2.gain.setValueAtTime(inst === "piano" ? 0.12 : 0.08, t0);
+
+    osc1.connect(vca);
+    osc2.connect(mix2).connect(vca);
+
+    // gentle lowpass to tame brightness
+    const lp = audioCtx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(3000, t0);
+    lp.Q.setValueAtTime(0.7, t0);
+
+    vca.connect(lp).connect(master);
+
+    osc1.start(t0);
+    osc2.start(t0);
+
+    return {
+      stop: () => {
+        const tt = audioCtx.currentTime;
+        vca.gain.cancelScheduledValues(tt);
+        vca.gain.setValueAtTime(Math.max(vca.gain.value, 0.0001), tt);
+        vca.gain.exponentialRampToValueAtTime(0.0001, tt + release);
+        const end = tt + release + 0.05;
+        try { osc1.stop(end); } catch {}
+        try { osc2.stop(end); } catch {}
+      }
+    };
+  }
+
+  function noteOn(note) {
+    ensureAudio();
+    if (heldNotes.has(note)) return;
+
+    // if the note is sustaining already, just mark it held again (don’t retrigger)
+    if (sustainedNotes.has(note)) {
+      heldNotes.set(note, sustainedNotes.get(note));
+      sustainedNotes.delete(note);
+      return;
+    }
+
+    const voice = makeVoice(midiToFreq(note));
+    heldNotes.set(note, voice);
+  }
+
+  function noteOff(note) {
+    if (!heldNotes.has(note)) return;
+    const voice = heldNotes.get(note);
+    heldNotes.delete(note);
+
+    if (instrumentEl.value === "drum") return; // (not used here)
+
+    if (sustainOn) {
+      sustainedNotes.set(note, voice);
+    } else {
+      voice.stop();
+      sustainedNotes.delete(note);
+    }
+  }
+
+  function stopAll() {
+    for (const [,v] of heldNotes) v.stop();
+    for (const [,v] of sustainedNotes) v.stop();
+    heldNotes.clear();
+    sustainedNotes.clear();
+  }
+
+  // Sustain UI
+  function setSustain(on) {
+    sustainOn = !!on;
+    sustainSwitch.classList.toggle("on", sustainOn);
+    sustainSwitch.setAttribute("aria-checked", sustainOn ? "true" : "false");
+    if (!sustainOn) {
+      // stop anything that was only sustained
+      for (const [note, v] of sustainedNotes) {
+        if (!heldNotes.has(note)) v.stop();
+        sustainedNotes.delete(note);
+      }
+    }
+  }
+  sustainSwitch.addEventListener("click", () => { ensureAudio(); setSustain(!sustainOn); });
+  sustainSwitch.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ensureAudio(); setSustain(!sustainOn); }
+  });
+
+  // Controls labels
+  function updateLabels() {
+    volLabel.textContent = Math.round(parseFloat(volumeEl.value) * 100) + "%";
+    relLabel.textContent = Math.round(parseFloat(releaseEl.value) * 1000) + " ms";
+    pinchLabel.textContent = parseFloat(pinchEl.value).toFixed(3);
+  }
+  updateLabels();
+  volumeEl.addEventListener("input", () => {
+    updateLabels();
+    if (master && audioCtx) master.gain.setTargetAtTime(parseFloat(volumeEl.value), audioCtx.currentTime, 0.01);
+  });
+  releaseEl.addEventListener("input", updateLabels);
+  pinchEl.addEventListener("input", updateLabels);
+
+  panicBtn.addEventListener("click", () => { ensureAudio(); stopAll(); statusEl.innerHTML = "Status: <b>running</b> (all notes stopped)"; });
+
+  // Click video to unlock audio on some browsers
+  stage.addEventListener("pointerdown", () => ensureAudio());
+
+  // ---------- Camera ----------
+  async function startCamera() {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+    video.srcObject = stream;
+    await video.play();
+  }
+
+  // ---------- MediaPipe HandLandmarker ----------
+  let handLandmarker = null;
+
+  async function initHandLandmarker() {
+    // Loads WASM + assets for vision tasks :contentReference[oaicite:4]{index=4}
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
+
+    handLandmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+      },
+      runningMode: "VIDEO",
+      numHands: 2
+    });
+  }
+
+  // ---------- Piano mapping ----------
+  // White keys across 2 octaves (C4..B5) by default (14 notes).
+  // Map x position -> which key, map y -> octave shift (optional).
+  const whiteNotes = [
+    60,62,64,65,67,69,71, // C4..B4
+    72,74,76,77,79,81,83  // C5..B5
+  ];
+
+  function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+
+  function xToNote(xPx, w) {
+    const t = clamp(xPx / w, 0, 0.999999);
+    const idx = Math.floor(t * whiteNotes.length);
+    return whiteNotes[idx];
+  }
+
+  // Use pinch distance between thumb tip (4) and index tip (8) to gate note on/off
+  // Landmark index reference: 21 landmarks including fingertip points; index tip is commonly landmark 8. :contentReference[oaicite:5]{index=5}
+  function dist2(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.sqrt(dx*dx+dy*dy); }
+
+  // Track per-hand state so you can play chords with multiple hands / multiple pinches.
+  const handState = new Map(); // handId -> {isPinched, currentNote}
+
+  function drawKeyOverlay(w,h,note) {
+    // simple indicator bar at bottom showing note region
+    const idx = whiteNotes.indexOf(note);
+    if (idx < 0) return;
+    const keyW = w / whiteNotes.length;
+    ctx.fillStyle = "rgba(0,190,190,0.25)";
+    ctx.fillRect(idx * keyW, h - 34, keyW, 34);
+    ctx.fillStyle = "rgba(215,246,255,0.9)";
+    ctx.font = "12px system-ui";
+    ctx.fillText("NOTE " + note, idx * keyW + 8, h - 14);
+  }
+
+  function drawLandmarks(landmarks, w, h) {
+    // landmarks are normalized 0..1 for x,y (typical for MediaPipe solutions) :contentReference[oaicite:6]{index=6}
+    ctx.fillStyle = "rgba(215,246,255,0.9)";
+    for (const p of landmarks) {
+      const x = p.x * w;
+      const y = p.y * h;
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  // ---------- Main loop ----------
+  let lastVideoTime = -1;
+
+  async function tick() {
+    const rect = stage.getBoundingClientRect();
+    const w = Math.floor(rect.width);
+    const h = Math.floor(rect.height);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+
+    ctx.clearRect(0,0,w,h);
+
+    if (handLandmarker && video.readyState >= 2) {
+      const nowMs = performance.now();
+
+      if (video.currentTime !== lastVideoTime) {
+        lastVideoTime = video.currentTime;
+
+        const res = handLandmarker.detectForVideo(video, nowMs);
+
+        // Draw “piano” guide
+        ctx.strokeStyle = "rgba(140,230,255,0.25)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(0, h - 34, w, 34);
+
+        if (res.landmarks && res.landmarks.length) {
+          // For each detected hand
+          res.landmarks.forEach((lm, i) => {
+            // Choose a stable id: handedness label + index
+            const handed = (res.handedness?.[i]?.[0]?.categoryName) || ("hand"+i);
+            const handId = handed + ":" + i;
+
+            const thumbTip = lm[4];
+            const indexTip = lm[8];
+
+            const pinch = dist2(thumbTip, indexTip);
+            const thresh = parseFloat(pinchEl.value);
+
+            const ixPx = indexTip.x * w;
+            const iyPx = indexTip.y * h;
+
+            const note = xToNote(ixPx, w);
+
+            // Visuals
+            drawLandmarks(lm, w, h);
+            ctx.fillStyle = "rgba(0,190,190,0.95)";
+            ctx.beginPath();
+            ctx.arc(ixPx, iyPx, 7, 0, Math.PI*2);
+            ctx.fill();
+
+            drawKeyOverlay(w, h, note);
+
+            // State machine per hand
+            const st = handState.get(handId) || { isPinched: false, currentNote: null };
+
+            const nowPinched = pinch < thresh;
+
+            // If pinched -> ensure note is on, and if note changed, swap notes
+            if (nowPinched) {
+              ensureAudio();
+              if (!st.isPinched) {
+                // pinch started
+                noteOn(note);
+                st.currentNote = note;
+              } else {
+                // pinch continuing
+                if (st.currentNote !== note) {
+                  // slide to new note
+                  noteOff(st.currentNote);
+                  noteOn(note);
+                  st.currentNote = note;
+                }
+              }
+            } else {
+              // pinch released
+              if (st.isPinched && st.currentNote != null) {
+                noteOff(st.currentNote);
+                st.currentNote = null;
+              }
+            }
+
+            st.isPinched = nowPinched;
+            handState.set(handId, st);
+
+            // HUD
+            hud.innerHTML =
+              `<b>${handed}</b> • index=(${ixPx.toFixed(0)}, ${iyPx.toFixed(0)})px • pinch=${pinch.toFixed(3)} ` +
+              `• note=${note} • sustain=${sustainOn ? "on" : "off"}`;
+          });
+        } else {
+          hud.textContent = "No hand detected. Show your hand to the camera.";
+        }
+      }
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  // ---------- Boot ----------
+  try {
+    statusEl.innerHTML = "Status: <b>starting camera…</b>";
+    await startCamera();
+    statusEl.innerHTML = "Status: <b>loading hand model…</b>";
+    await initHandLandmarker();
+    statusEl.innerHTML = "Status: <b>ready</b> (pinch to play)";
+    requestAnimationFrame(tick);
+  } catch (e) {
+    console.error(e);
+    statusEl.innerHTML = "Status: <b>error</b> — " + (e?.message || e);
+  }
+</script>
+</body>
+</html>
