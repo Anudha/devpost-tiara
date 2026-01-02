@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3-Octave Polyphonic Synth</title>
+    <style>
+        :root {
+            --bg-color: #0f0f0f;
+            --panel-bg: #1a1a1a;
+            --teal-accent: #008080;
+            --teal-glow: #00f2f2;
+            --gray-text: #888;
+            --border-color: #2a2a2a;
+        }
+
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background: var(--bg-color); 
+            color: white; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 20px; 
+        }
+
+        .container {
+            background: var(--panel-bg);
+            padding: 25px;
+            border-radius: 15px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.7);
+            width: 95%;
+            max-width: 1000px;
+        }
+
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        h1 { font-size: 1.2rem; color: var(--teal-glow); letter-spacing: 3px; margin: 0; }
+
+        .keyboard { 
+            display: grid; 
+            grid-template-columns: repeat(12, 1fr); 
+            gap: 5px; 
+            margin: 20px 0;
+            background: #000;
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .key-btn {
+            padding: 15px 5px;
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 4px;
+            border: 1px solid #333;
+            background: #222;
+            color: var(--gray-text);
+            transition: all 0.1s;
+        }
+
+        .key-btn:active, .key-btn.active { 
+            background: var(--teal-accent); 
+            color: white; 
+            box-shadow: 0 0 10px var(--teal-glow);
+        }
+
+        #note-display {
+            background: #050505;
+            border: 1px solid var(--border-color);
+            padding: 15px;
+            height: 100px;
+            overflow-y: auto;
+            border-radius: 6px;
+            font-family: 'Monaco', monospace;
+            color: var(--teal-glow);
+            font-size: 13px;
+            line-height: 1.8;
+            text-align: left;
+        }
+
+        .controls { display: flex; gap: 15px; }
+        select, .action-btn {
+            background: #252525;
+            color: var(--teal-glow);
+            border: 1px solid var(--teal-accent);
+            padding: 5px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>POLYPHONIC SYNTH // 3 OCTAVES</h1>
+            <div class="controls">
+                <select id="waveType">
+                    <option value="triangle">Flute (Triangle)</option>
+                    <option value="sine">Pure (Sine)</option>
+                    <option value="square">Retro (Square)</option>
+                    <option value="sawtooth">Brass (Sawtooth)</option>
+                </select>
+                <button class="action-btn" onclick="downloadCSV()">Export CSV</button>
+            </div>
+        </div>
+
+        <div class="keyboard" id="keyboard"></div>
+
+        <div id="note-display"></div>
+    </div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.3; // Lowered to allow polyphony without clipping
+        masterGain.connect(audioCtx.destination);
+
+        const noteHistory = [];
+        const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        
+        // Generate 3 Octaves (C3 to B5)
+        const keys = [];
+        for (let octave = 3; octave <= 5; octave++) {
+            noteNames.forEach((name, index) => {
+                // Frequency formula: f = 440 * 2^((n - 69) / 12)
+                // C4 is midi note 60. C3 is 48.
+                const midiNote = (octave + 1) * 12 + index;
+                const freq = 440 * Math.pow(2, (midiNote - 69) / 12);
+                keys.push({ name: `${name}${octave}`, freq });
+            });
+        }
+
+        const keyboard = document.getElementById('keyboard');
+        const display = document.getElementById('note-display');
+        const waveSelect = document.getElementById('waveType');
+
+        keys.forEach(key => {
+            const btn = document.createElement('button');
+            btn.className = 'key-btn';
+            btn.innerText = key.name;
+            btn.onmousedown = () => playNote(key);
+            keyboard.appendChild(btn);
+        });
+
+        function playNote(key) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc = audioCtx.createOscillator();
+            const voiceGain = audioCtx.createGain();
+
+            osc.type = waveSelect.value;
+            osc.frequency.setValueAtTime(key.freq, audioCtx.currentTime);
+
+            const now = audioCtx.currentTime;
+            voiceGain.gain.setValueAtTime(0, now);
+            voiceGain.gain.linearRampToValueAtTime(0.5, now + 0.05); // Attack
+            voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 1.0); // Decay
+
+            osc.connect(voiceGain);
+            voiceGain.connect(masterGain);
+
+            osc.start();
+            osc.stop(now + 1.0);
+
+            updateHistory(key.name);
+        }
+
+        function updateHistory(name) {
+            noteHistory.push(name);
+            let text = "";
+            for (let i = 0; i < noteHistory.length; i++) {
+                text += noteHistory[i].padEnd(4, ' ');
+                if ((i + 1) % 16 === 0) text += "\n";
+            }
+            display.innerText = text;
+            display.scrollTop = display.scrollHeight;
+        }
+
+        function downloadCSV() {
+            if (noteHistory.length === 0) return;
+            const content = "Index,Note\n" + noteHistory.map((n, i) => `${i+1},${n}`).join("\n");
+            const blob = new Blob([content], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'notes.csv';
+            a.click();
+        }
+    </script>
+</body>
+</html>
