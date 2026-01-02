@@ -11,3 +11,6 @@ in the above html page, add these things: a window where the notes one plays are
 
 c #Minimal direction and more abstract instruction
 create the ability to play up to 3 notes at a time, and expand the keys to span 3 octaves
+
+d #User Friendliness of Playing the Keys
+instead of laying out the keys in an array with 3 rows, make them all in one line, and long and thin, with longer being the vertical direction on the screen. can you make them play if the mouse slides over the key instead of clicking?
