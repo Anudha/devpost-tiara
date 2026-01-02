@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Track Slide Synth</title>
+    <style>
+        :root {
+            --bg-color: #080808;
+            --panel-bg: #121212;
+            --teal-accent: #008080;
+            --teal-glow: #00f2f2;
+            --gray-text: #555;
+            --border-color: #222;
+        }
+
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: var(--bg-color); 
+            color: white; 
+            margin: 0; padding: 20px;
+            display: flex; flex-direction: column; align-items: center;
+        }
+
+        .container { width: 98vw; max-width: 1200px; }
+
+        .header { 
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 10px; border-bottom: 1px solid var(--teal-accent); margin-bottom: 20px;
+        }
+
+        /* Instrument Track Styling */
+        .instrument-track {
+            background: var(--panel-bg);
+            margin-bottom: 25px;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid var(--teal-accent);
+        }
+
+        .track-info { display: flex; justify-content: space-between; margin-bottom: 10px; font-weight: bold; color: var(--teal-glow); }
+
+        .keyboard-container {
+            width: 100%;
+            overflow-x: auto;
+            background: #000;
+            padding: 10px 0;
+            border-radius: 4px;
+            cursor: crosshair;
+        }
+
+        .keyboard { display: flex; width: max-content; height: 180px; gap: 2px; padding: 0 10px; }
+
+        .key-btn {
+            width: 28px; height: 100%;
+            background: #1a1a1a;
+            border: 1px solid var(--border-color);
+            color: var(--gray-text);
+            font-size: 9px;
+            display: flex; align-items: flex-end; justify-content: center;
+            padding-bottom: 8px;
+            user-select: none;
+            border-radius: 0 0 3px 3px;
+        }
+
+        .key-btn.active {
+            background: var(--teal-accent) !important;
+            color: white;
+            box-shadow: 0 0 15px var(--teal-glow);
+        }
+
+        #note-display {
+            background: #000; border: 1px solid var(--border-color);
+            padding: 15px; height: 100px; overflow-y: auto;
+            border-radius: 4px; font-family: monospace; color: var(--teal-glow);
+            font-size: 12px; margin-top: 10px;
+        }
+
+        .action-btn {
+            background: transparent; color: var(--teal-glow);
+            border: 1px solid var(--teal-accent); padding: 8px 16px;
+            cursor: pointer; border-radius: 4px;
+        }
+        
+        .action-btn:hover { background: var(--teal-accent); color: white; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>MULTI-INSTRUMENT SYNTH</h1>
+            <button class="action-btn" onclick="downloadCSV()">EXPORT SESSION CSV</button>
+        </div>
+
+        <div id="tracks-wrapper">
+            </div>
+
+        <div id="note-display">SESSION LOG: Ready...</div>
+    </div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.2; // Lowered further to handle multiple instruments playing at once
+        masterGain.connect(audioCtx.destination);
+
+        const noteHistory = [];
+        const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const instruments = [
+            { label: 'FLUTE SECTION', wave: 'triangle' },
+            { label: 'BRASS SECTION', wave: 'sawtooth' },
+            { label: 'CHIP-TUNE LEAD', wave: 'square' }
+        ];
+
+        const tracksWrapper = document.getElementById('tracks-wrapper');
+        const display = document.getElementById('note-display');
+
+        // Initialize Tracks
+        instruments.forEach(inst => {
+            createTrack(inst.label, inst.wave);
+        });
+
+        function createTrack(label, waveType) {
+            const trackDiv = document.createElement('div');
+            trackDiv.className = 'instrument-track';
+            
+            trackDiv.innerHTML = `
+                <div class="track-info">
+                    <span>${label}</span>
+                    <span style="font-size: 12px; opacity: 0.7;">WAVE: ${waveType.toUpperCase()}</span>
+                </div>
+                <div class="keyboard-container">
+                    <div class="keyboard"></div>
+                </div>
+            `;
+
+            const keyboard = trackDiv.querySelector('.keyboard');
+
+            // Generate 3 Octaves (C3-B5) per track
+            for (let octave = 3; octave <= 5; octave++) {
+                noteNames.forEach((name, index) => {
+                    const midiNote = (octave + 1) * 12 + index;
+                    const freq = 440 * Math.pow(2, (midiNote - 69) / 12);
+                    
+                    const btn = document.createElement('div');
+                    btn.className = 'key-btn';
+                    btn.innerText = `${name}${octave}`;
+                    
+                    const trigger = (e) => {
+                        if (e.type === 'mousedown' || (e.type === 'mouseenter' && e.buttons === 1)) {
+                            playNote(freq, btn, `${name}${octave}`, waveType, label);
+                        }
+                    };
+
+                    btn.onmouseenter = trigger;
+                    btn.onmousedown = trigger;
+                    keyboard.appendChild(btn);
+                });
+            }
+            tracksWrapper.appendChild(trackDiv);
+        }
+
+        function playNote(freq, element, noteName, waveType, instLabel) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            element.classList.add('active');
+            setTimeout(() => element.classList.remove('active'), 200);
+
+            const osc = audioCtx.createOscillator();
+            const voiceGain = audioCtx.createGain();
+
+            osc.type = waveType;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+            const now = audioCtx.currentTime;
+            voiceGain.gain.setValueAtTime(0, now);
+            voiceGain.gain.linearRampToValueAtTime(0.4, now + 0.05);
+            voiceGain.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+
+            osc.connect(voiceGain);
+            voiceGain.connect(masterGain);
+
+            osc.start();
+            osc.stop(now + 0.8);
+
+            updateHistory(noteName, instLabel);
+        }
+
+        function updateHistory(note, inst) {
+            const entry = `[${inst.split(' ')[0]}] ${note}`;
+            noteHistory.push(entry);
+            
+            let text = "";
+            for (let i = 0; i < noteHistory.length; i++) {
+                text += noteHistory[i].padEnd(15, ' ');
+                if ((i + 1) % 8 === 0) text += "\n";
+            }
+            display.innerText = text;
+            display.scrollTop = display.scrollHeight;
+        }
+
+        function downloadCSV() {
+            if (noteHistory.length === 0) return;
+            const content = "Index,Instrument_Note\n" + noteHistory.map((n, i) => `${i+1},${n.trim()}`).join("\n");
+            const blob = new Blob([content], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'multi_track_session.csv';
+            a.click();
+        }
+    </script>
+</body>
+</html>
