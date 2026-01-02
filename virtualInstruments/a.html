@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Audio Flute & Piano</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #f0f4f8; padding: 50px; }
+        .keyboard { display: flex; justify-content: center; gap: 10px; margin-top: 30px; }
+        button {
+            padding: 20px 15px;
+            font-size: 18px;
+            cursor: pointer;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            background: white;
+            transition: transform 0.1s, background 0.2s;
+            min-width: 60px;
+        }
+        button:active { transform: translateY(4px); background: #e0e0e0; }
+        .controls { margin-bottom: 20px; }
+        select { padding: 10px; font-size: 16px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+    <h1>Web Audio Synthesizer</h1>
+    
+    <div class="controls">
+        <label for="waveType">Select Instrument Waveform:</label>
+        <select id="waveType">
+            <option value="triangle">Flute (Triangle)</option>
+            <option value="sine">Pure Tone (Sine)</option>
+            <option value="square">Clarinet/Retro (Square)</option>
+            <option value="sawtooth">String/Brass (Sawtooth)</option>
+        </select>
+    </div>
+
+    <div class="keyboard" id="keyboard">
+        </div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Frequencies for C4 Major Scale (C, D, E, F, G, A, B)
+        const notes = [
+            { name: 'C', freq: 261.63 },
+            { name: 'D', freq: 293.66 },
+            { name: 'E', freq: 329.63 },
+            { name: 'F', freq: 349.23 },
+            { name: 'G', freq: 392.00 },
+            { name: 'A', freq: 440.00 },
+            { name: 'B', freq: 493.88 }
+        ];
+
+        const keyboard = document.getElementById('keyboard');
+        const waveSelect = document.getElementById('waveType');
+
+        // Create buttons
+        notes.forEach(note => {
+            const btn = document.createElement('button');
+            btn.innerText = note.name;
+            btn.onmousedown = () => playNote(note.freq);
+            keyboard.appendChild(btn);
+        });
+
+        function playNote(frequency) {
+            // Ensure audio context is running (required by browsers)
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = waveSelect.value;
+            oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+
+            // "Flute" Envelope: Smooth attack and quick release
+            const now = audioCtx.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.5, now + 0.1); // Attack
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 1.5); // Release
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start();
+            oscillator.stop(now + 1.5);
+        }
+    </script>
+</body>
+</html>
