@@ -14,3 +14,7 @@ create the ability to play up to 3 notes at a time, and expand the keys to span 
 
 d #User Friendliness of Playing the Keys
 instead of laying out the keys in an array with 3 rows, make them all in one line, and long and thin, with longer being the vertical direction on the screen. can you make them play if the mouse slides over the key instead of clicking?
+
+
+e #Enhance Functionality
+can you make it so each virtual instrument has its own row if the user wants, so user can play more than one instrument without toggle
