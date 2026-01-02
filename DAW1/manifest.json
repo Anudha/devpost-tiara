@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Create Music",
+  "version": "1.0",
+  "description": "A multi-instrument synthesizer in your side panel.",
+  "permissions": ["sidePanel"],
+  "action": {
+    "default_title": "Open Synth"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

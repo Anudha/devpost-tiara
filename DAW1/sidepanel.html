@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Synth Panel</title>
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --teal: #008080;
+            --teal-glow: #00f2f2;
+            --gray: #444;
+        }
+        body { 
+            font-family: sans-serif; background: var(--bg); color: white; 
+            margin: 0; padding: 10px; width: 100%; box-sizing: border-box;
+            overflow-x: hidden;
+        }
+        h2 { font-size: 14px; color: var(--teal-glow); letter-spacing: 1px; margin: 10px 0; }
+        
+        .track { background: #111; margin-bottom: 15px; border-radius: 4px; padding: 5px; }
+        .label { font-size: 10px; color: var(--teal); margin-bottom: 5px; font-weight: bold; }
+
+        .kb-scroll { overflow-x: auto; width: 100%; background: #000; border-radius: 3px; }
+        .kb { display: flex; width: max-content; height: 140px; gap: 1px; padding: 5px; }
+        
+        .key {
+            width: 22px; height: 100%; background: #1a1a1a;
+            border: 0.5px solid #222; color: #555; font-size: 8px;
+            display: flex; align-items: flex-end; justify-content: center;
+            padding-bottom: 5px; cursor: pointer; border-radius: 0 0 2px 2px;
+        }
+        .key.active { 
+            background: var(--teal) !important; color: white; 
+            box-shadow: 0 0 10px var(--teal-glow); 
+        }
+
+        #log { 
+            background: #000; font-family: monospace; font-size: 10px; 
+            height: 80px; overflow-y: auto; padding: 10px; color: var(--teal-glow);
+            border: 1px solid #222; margin-top: 10px;
+        }
+        .btn { 
+            width: 100%; background: transparent; border: 1px solid var(--teal);
+            color: var(--teal); padding: 5px; cursor: pointer; font-size: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h2>SIDE-SYNTH</h2>
+    <div id="tracks"></div>
+    <div id="log">SESSION LOG...</div>
+    <button class="btn" id="export" style="margin-top:10px">EXPORT CSV</button>
+
+    <script src="sidepanel.js"></script>
+</body>
+</html>
